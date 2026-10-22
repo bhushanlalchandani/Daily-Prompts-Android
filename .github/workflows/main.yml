@@ -1,4 +1,3 @@
-
 name: Build Daily Prompts APK
 
 on:
@@ -6,6 +5,7 @@ on:
   push:
     paths:
       - "daily-prompts-modern-ui-source.zip"
+      - "daily-prompts-modern-ui-source-daily-fix.zip"
       - ".github/workflows/main.yml"
 
 permissions:
@@ -31,8 +31,16 @@ jobs:
           gradle-version: "9.3.1"
 
       - name: Extract Android project
+        shell: bash
         run: |
-          unzip -q daily-prompts-modern-ui-source.zip -d extracted
+          set -euo pipefail
+          if [ -f daily-prompts-modern-ui-source-daily-fix.zip ]; then
+            ZIP_FILE="daily-prompts-modern-ui-source-daily-fix.zip"
+          else
+            ZIP_FILE="daily-prompts-modern-ui-source.zip"
+          fi
+          echo "Building from $ZIP_FILE"
+          unzip -q "$ZIP_FILE" -d extracted
           test -f extracted/daily-prompts-src/settings.gradle.kts
 
       - name: Build debug APK
@@ -45,3 +53,4 @@ jobs:
           name: Daily-Prompts-debug-APK
           path: extracted/daily-prompts-src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          
