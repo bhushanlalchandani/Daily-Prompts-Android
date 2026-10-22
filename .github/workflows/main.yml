@@ -1,11 +1,11 @@
+
 name: Build Daily Prompts APK
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "daily-prompts-modern-ui-source.zip"
-      - "daily-prompts-modern-ui-source-daily-fix.zip"
+      - "*.zip"
       - ".github/workflows/main.yml"
 
 permissions:
@@ -19,38 +19,51 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Install Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.3.1"
 
-      - name: Extract Android project
+      - name: Extract latest Daily Prompts source
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f daily-prompts-modern-ui-source-daily-fix.zip ]; then
-            ZIP_FILE="daily-prompts-modern-ui-source-daily-fix.zip"
-          else
-            ZIP_FILE="daily-prompts-modern-ui-source.zip"
+
+          ZIP="daily-prompts-modern-ui-source-daily-fix-patched.zip"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "Patched ZIP not found: $ZIP"
+            echo "ZIP files available:"
+            ls -1 *.zip
+            exit 1
           fi
-          echo "Building from $ZIP_FILE"
-          unzip -q "$ZIP_FILE" -d extracted
-          test -f extracted/daily-prompts-src/settings.gradle.kts
+
+          mkdir -p extracted
+          unzip -q "$ZIP" -d extracted
+
+          PROJECT_DIR="$(find extracted -type f -name settings.gradle.kts -print -quit | xargs -r dirname)"
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Android project settings.gradle.kts not found."
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Using project: $PROJECT_DIR"
 
       - name: Build debug APK
-        run: |
-          gradle -p extracted/daily-prompts-src assembleDebug --no-daemon
+        run: gradle -p "$PROJECT_DIR" assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Daily-Prompts-debug-APK
-          path: extracted/daily-prompts-src/app/build/outputs/apk/debug/*.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           
