@@ -24,32 +24,63 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Gradle
+      - name: Set up Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.13"
+          gradle-version: "9.3.1"
 
       - name: Extract selected source ZIP
+        shell: bash
         run: |
           set -euo pipefail
+
           ZIP="daily-prompts (2).zip"
-          test -f "$ZIP" || {
-            echo "ERROR: ZIP not found: $ZIP"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "::error::Required ZIP not found: $ZIP"
             exit 1
-          }
+          fi
+
           mkdir -p extracted
           unzip -q "$ZIP" -d extracted
-          PROJECT="$(find extracted -name settings.gradle.kts -printf '%h\n' | head -n 1)"
-          test -n "$PROJECT" || {
-            echo "ERROR: settings.gradle.kts not found in ZIP"
+
+          PROJECT="$(find extracted -name settings.gradle.kts -type f -print -quit)"
+
+          if [ -z "$PROJECT" ]; then
+            echo "::error::settings.gradle.kts not found in ZIP"
             exit 1
-          }
-          echo "PROJECT_DIR=$PROJECT" >> "$GITHUB_ENV"
+          fi
+
+          PROJECT_DIR="$(dirname "$PROJECT")"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Selected ZIP: $ZIP"
+          echo "Project directory: $PROJECT_DIR"
+
+          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "::error::Android app build file not found"
+            exit 1
+          fi
 
       - name: Build debug APK
+        shell: bash
         run: |
+          set -euo pipefail
           cd "$PROJECT_DIR"
           gradle --no-daemon assembleDebug
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "::error::APK file was not generated"
+            exit 1
+          fi
+
+          ls -lh "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -57,3 +88,4 @@ jobs:
           name: Daily-Prompts-debug-APK
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7
