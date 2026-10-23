@@ -27,32 +27,23 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "9.3.1"
+          gradle-version: "8.13"
 
       - name: Extract selected source ZIP
-        shell: bash
         run: |
           set -euo pipefail
           ZIP="daily-prompts (2).zip"
-
-          if [ ! -f "$ZIP" ]; then
-            echo "ERROR: $ZIP was not found in the repository root."
+          test -f "$ZIP" || {
+            echo "ERROR: ZIP not found: $ZIP"
             exit 1
-          fi
-
-          mkdir extracted
+          }
+          mkdir -p extracted
           unzip -q "$ZIP" -d extracted
-
-          PROJECT="extracted"
-          if [ ! -f "$PROJECT/settings.gradle.kts" ]; then
-            PROJECT="$(find extracted -mindepth 1 -maxdepth 3 -name settings.gradle.kts -print -quit | xargs -r dirname)"
-          fi
-
-          if [ -z "$PROJECT" ] || [ ! -f "$PROJECT/settings.gradle.kts" ]; then
-            echo "ERROR: Android project not found in ZIP."
+          PROJECT="$(find extracted -name settings.gradle.kts -printf '%h\n' | head -n 1)"
+          test -n "$PROJECT" || {
+            echo "ERROR: settings.gradle.kts not found in ZIP"
             exit 1
-          fi
-
+          }
           echo "PROJECT_DIR=$PROJECT" >> "$GITHUB_ENV"
 
       - name: Build debug APK
