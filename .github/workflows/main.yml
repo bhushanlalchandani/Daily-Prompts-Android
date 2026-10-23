@@ -1,4 +1,3 @@
-
 name: Build Daily Prompts APK
 
 on:
@@ -30,40 +29,28 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
-      - name: Extract latest Daily Prompts source
-        shell: bash
+      - name: Extract merged project ZIP
         run: |
           set -euo pipefail
-
-          ZIP="daily-prompts-modern-ui-source-daily-fix-patched.zip"
-
-          if [ ! -f "$ZIP" ]; then
-            echo "Patched ZIP not found: $ZIP"
-            echo "ZIP files available:"
-            ls -1 *.zip
+          ZIP="daily-prompts-claude-and-chatgpt-gemini-merged.zip"
+          test -f "$ZIP" || {
+            echo "ERROR: Required ZIP not found: $ZIP"
             exit 1
-          fi
-
+          }
           mkdir -p extracted
           unzip -q "$ZIP" -d extracted
-
-          PROJECT_DIR="$(find extracted -type f -name settings.gradle.kts -print -quit | xargs -r dirname)"
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Android project settings.gradle.kts not found."
-            exit 1
-          fi
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Using project: $PROJECT_DIR"
+          PROJECT="extracted/daily-prompts-src"
+          test -f "$PROJECT/settings.gradle.kts"
+          echo "PROJECT_DIR=$PROJECT" >> "$GITHUB_ENV"
 
       - name: Build debug APK
-        run: gradle -p "$PROJECT_DIR" assembleDebug --no-daemon
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Daily-Prompts-debug-APK
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: extracted/daily-prompts-src/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          
