@@ -29,18 +29,30 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
-      - name: Extract merged project ZIP
+      - name: Extract selected source ZIP
+        shell: bash
         run: |
           set -euo pipefail
-          ZIP="daily-prompts-claude-and-chatgpt-gemini-merged.zip"
-          test -f "$ZIP" || {
-            echo "ERROR: Required ZIP not found: $ZIP"
+          ZIP="daily-prompts (2).zip"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "ERROR: $ZIP was not found in the repository root."
             exit 1
-          }
-          mkdir -p extracted
+          fi
+
+          mkdir extracted
           unzip -q "$ZIP" -d extracted
-          PROJECT="extracted/daily-prompts-src"
-          test -f "$PROJECT/settings.gradle.kts"
+
+          PROJECT="extracted"
+          if [ ! -f "$PROJECT/settings.gradle.kts" ]; then
+            PROJECT="$(find extracted -mindepth 1 -maxdepth 3 -name settings.gradle.kts -print -quit | xargs -r dirname)"
+          fi
+
+          if [ -z "$PROJECT" ] || [ ! -f "$PROJECT/settings.gradle.kts" ]; then
+            echo "ERROR: Android project not found in ZIP."
+            exit 1
+          fi
+
           echo "PROJECT_DIR=$PROJECT" >> "$GITHUB_ENV"
 
       - name: Build debug APK
@@ -52,5 +64,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Daily-Prompts-debug-APK
-          path: extracted/daily-prompts-src/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
