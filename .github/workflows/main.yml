@@ -24,42 +24,65 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Gradle 9.3.1
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.3.1"
 
-      - name: Extract selected source ZIP
+      - name: Find and extract Android project ZIP
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP="daily-prompts (2).zip"
-
-          if [ ! -f "$ZIP" ]; then
-            echo "::error::Required ZIP not found: $ZIP"
-            exit 1
-          fi
-
           mkdir -p extracted
-          unzip -q "$ZIP" -d extracted
+          FOUND=false
 
-          PROJECT="$(find extracted -name settings.gradle.kts -type f -print -quit)"
+          for ZIP in *.zip; do
+            [ -f "$ZIP" ] || continue
 
-          if [ -z "$PROJECT" ]; then
-            echo "::error::settings.gradle.kts not found in ZIP"
+            echo "Checking ZIP: $ZIP"
+
+            rm -rf extracted/*
+            unzip -q "$ZIP" -d extracted || continue
+
+            PROJECT_SETTINGS=$(find extracted -name settings.gradle.kts -type f -print -quit)
+
+            if [ -n "$PROJECT_SETTINGS" ]; then
+              PROJECT_DIR=$(dirname "$PROJECT_SETTINGS")
+
+              if [ -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+                echo "Selected source ZIP: $ZIP"
+                echo "Project directory: $PROJECT_DIR"
+                echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+                FOUND=true
+                break
+              fi
+            fi
+          done
+
+          if [ "$FOUND" != "true" ]; then
+            echo "ERROR: No ZIP containing a valid Android project was found."
             exit 1
           fi
 
-          PROJECT_DIR="$(dirname "$PROJECT")"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+      - name: Create debug keystore if missing
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          echo "Selected ZIP: $ZIP"
-          echo "Project directory: $PROJECT_DIR"
+          KEYSTORE="$PROJECT_DIR/app/debug.keystore"
 
-          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "::error::Android app build file not found"
-            exit 1
+          if [ ! -f "$KEYSTORE" ]; then
+            keytool -genkeypair \
+              -v \
+              -keystore "$KEYSTORE" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
           fi
 
       - name: Build debug APK
@@ -73,10 +96,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "::error::APK file was not generated"
+            echo "ERROR: APK was not generated."
             exit 1
           fi
 
@@ -88,4 +112,4 @@ jobs:
           name: Daily-Prompts-debug-APK
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
